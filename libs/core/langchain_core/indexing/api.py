@@ -24,10 +24,11 @@ from typing import (
     cast,
 )
 
+from pydantic import model_validator
+
 from langchain_core.document_loaders.base import BaseLoader
 from langchain_core.documents import Document
 from langchain_core.indexing.base import RecordManager
-from langchain_core.pydantic_v1 import root_validator
 from langchain_core.vectorstores import VectorStore
 
 # Magic UUID to use as a namespace for hashing.
@@ -67,7 +68,8 @@ class _HashedDocument(Document):
     def is_lc_serializable(cls) -> bool:
         return False
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
+    @classmethod
     def calculate_hashes(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         """Root validator to calculate content and metadata hash."""
         content = values.get("page_content", "")

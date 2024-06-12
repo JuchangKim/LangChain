@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Literal, Optional, Union
 
+from pydantic import model_validator
 from typing_extensions import TypedDict
 
 from langchain_core.messages.base import (
@@ -14,7 +15,6 @@ from langchain_core.messages.tool import (
     default_tool_chunk_parser,
     default_tool_parser,
 )
-from langchain_core.pydantic_v1 import root_validator
 from langchain_core.utils._merge import merge_dicts, merge_lists
 from langchain_core.utils.json import (
     parse_partial_json,
@@ -68,7 +68,8 @@ class AIMessage(BaseMessage):
             "invalid_tool_calls": self.invalid_tool_calls,
         }
 
-    @root_validator()
+    @model_validator(mode="before")
+    @classmethod
     def _backwards_compat_tool_calls(cls, values: dict) -> dict:
         raw_tool_calls = values.get("additional_kwargs", {}).get("tool_calls")
         tool_calls = (
@@ -122,7 +123,7 @@ class AIMessage(BaseMessage):
         return (base.strip() + "\n" + "\n".join(lines)).strip()
 
 
-AIMessage.update_forward_refs()
+AIMessage.model_rebuild()
 
 
 class AIMessageChunk(AIMessage, BaseMessageChunk):
@@ -149,9 +150,11 @@ class AIMessageChunk(AIMessage, BaseMessageChunk):
             "invalid_tool_calls": self.invalid_tool_calls,
         }
 
-    @root_validator()
+    @model_validator(mode="before")
+    @classmethod
     def init_tool_calls(cls, values: dict) -> dict:
-        if not values["tool_call_chunks"]:
+        # TODO(EUGENE): Apply
+        if not values.get("tool_call_chunks"):
             values["tool_calls"] = []
             values["invalid_tool_calls"] = []
             return values

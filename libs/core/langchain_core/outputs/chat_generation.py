@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Literal
 
+from pydantic import root_validator, model_validator
+
 from langchain_core.messages import BaseMessage, BaseMessageChunk
 from langchain_core.outputs.generation import Generation
-from langchain_core.pydantic_v1 import root_validator
 from langchain_core.utils._merge import merge_dicts
 
 
@@ -19,7 +20,8 @@ class ChatGeneration(Generation):
     type: Literal["ChatGeneration"] = "ChatGeneration"  # type: ignore[assignment]
     """Type is used exclusively for serialization purposes."""
 
-    @root_validator
+    @model_validator(mode="before")
+    @classmethod
     def set_text(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         """Set the text attribute to be the contents of the message."""
         try:

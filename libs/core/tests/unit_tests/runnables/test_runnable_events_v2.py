@@ -15,6 +15,7 @@ from typing import (
 )
 
 import pytest
+from pydantic import BaseModel
 
 from langchain_core.callbacks import CallbackManagerForRetrieverRun, Callbacks
 from langchain_core.chat_history import BaseChatMessageHistory
@@ -30,7 +31,6 @@ from langchain_core.messages import (
 )
 from langchain_core.prompt_values import ChatPromptValue
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.pydantic_v1 import BaseModel
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.runnables import (
     ConfigurableField,
@@ -1689,7 +1689,7 @@ async def test_runnable_with_message_history() -> None:
         # the content in the store!
 
         # Using Any type here rather than List[BaseMessage] due to pydantic issue!
-        messages: Any
+        messages: Any = None
 
         def add_message(self, message: BaseMessage) -> None:
             """Add a self-created message to the store."""

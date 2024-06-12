@@ -30,6 +30,15 @@ from functools import partial
 from inspect import signature
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Type, Union
 
+from pydantic import (
+    model_validator, BaseModel,
+    Extra,
+    Field,
+    ValidationError,
+    create_model, ConfigDict,
+    # validate_arguments,
+)
+
 from langchain_core._api import deprecated
 from langchain_core.callbacks import (
     AsyncCallbackManager,
@@ -47,15 +56,6 @@ from langchain_core.prompts import (
     PromptTemplate,
     aformat_document,
     format_document,
-)
-from langchain_core.pydantic_v1 import (
-    BaseModel,
-    Extra,
-    Field,
-    ValidationError,
-    create_model,
-    root_validator,
-    validate_arguments,
 )
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.runnables import (
@@ -122,6 +122,7 @@ def create_schema_from_function(
     Returns:
         A pydantic model with the same arguments as the function
     """
+    raise NotImplementedError()
     # https://docs.pydantic.dev/latest/usage/validation_decorator/
     validated = validate_arguments(func, config=_SchemaConfig)  # type: ignore
     inferred_model = validated.model  # type: ignore
@@ -209,6 +210,7 @@ class ChildTool(BaseTool):
     and passed as arguments to the handlers defined in `callbacks`.
     You can use these to eg identify a specific instance of a tool with its use case.
     """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     handle_tool_error: Optional[
         Union[bool, str, Callable[[ToolException], str]]
@@ -220,10 +222,15 @@ class ChildTool(BaseTool):
     ] = False
     """Handle the content of the ValidationError thrown."""
 
-    class Config(Serializable.Config):
-        """Configuration for this pydantic object."""
+    # # TODO[pydantic]: The `Config` class inherits from another class, please create the `model_config` manually.
+    # # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
+    # class Config(Serializable.Config):
+    #     """Configuration for this pydantic object."""
+    #
+    #     arbitrary_types_allowed = True
+    # Figure out how to resolve this
 
-        arbitrary_types_allowed = True
+
 
     @property
     def is_single_input(self) -> bool:
@@ -309,7 +316,8 @@ class ChildTool(BaseTool):
                 }
         return tool_input
 
-    @root_validator()
+    @model_validator(mode="before")
+    @classmethod
     def raise_deprecation(cls, values: Dict) -> Dict:
         """Raise deprecation warning if callback_manager is used."""
         if values.get("callback_manager") is not None:

@@ -6,12 +6,13 @@ import warnings
 from typing import Any, Dict, List, Optional, Type
 from uuid import UUID
 
-from langsmith.schemas import RunBase as BaseRunV2
-from langsmith.schemas import RunTypeEnum as RunTypeEnumDep
+from langchain_core.tracers.run_schema import RunBase as BaseRunV2
+from langchain_core.tracers.run_schema import RunTypeEnum as RunTypeEnumDep
+
+from pydantic import model_validator, BaseModel, Field
 
 from langchain_core._api import deprecated
 from langchain_core.outputs import LLMResult
-from langchain_core.pydantic_v1 import BaseModel, Field, root_validator
 
 
 @deprecated("0.1.0", alternative="Use string instead.", removal="0.3.0")
@@ -119,7 +120,8 @@ class Run(BaseRunV2):
     trace_id: Optional[UUID] = None
     dotted_order: Optional[str] = None
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
+    @classmethod
     def assign_name(cls, values: dict) -> dict:
         """Assign name to the run."""
         if values.get("name") is None:
@@ -132,9 +134,9 @@ class Run(BaseRunV2):
         return values
 
 
-ChainRun.update_forward_refs()
-ToolRun.update_forward_refs()
-Run.update_forward_refs()
+ChainRun.model_rebuild()
+ToolRun.model_rebuild()
+Run.model_rebuild()
 
 __all__ = [
     "BaseRun",

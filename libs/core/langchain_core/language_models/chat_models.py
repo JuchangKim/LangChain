@@ -21,6 +21,7 @@ from typing import (
     cast,
 )
 
+from pydantic import model_validator, ConfigDict, Field
 from typing_extensions import TypedDict
 
 from langchain_core._api import deprecated
@@ -53,12 +54,12 @@ from langchain_core.outputs import (
     RunInfo,
 )
 from langchain_core.prompt_values import ChatPromptValue, PromptValue, StringPromptValue
-from langchain_core.pydantic_v1 import Field, root_validator
 from langchain_core.runnables.config import ensure_config, run_in_executor
 from langchain_core.tracers._streaming import _StreamingCallbackHandler
 
 if TYPE_CHECKING:
-    from langchain_core.pydantic_v1 import BaseModel
+    from pydantic import BaseModel
+
     from langchain_core.runnables import Runnable, RunnableConfig
     from langchain_core.tools import BaseTool
 
@@ -117,10 +118,13 @@ async def agenerate_from_stream(
 class BaseChatModel(BaseLanguageModel[BaseMessage], ABC):
     """Base class for Chat models."""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     callback_manager: Optional[BaseCallbackManager] = Field(default=None, exclude=True)
     """[DEPRECATED] Callback manager to add to the run trace."""
 
-    @root_validator()
+    @model_validator(mode="before")
+    @classmethod
     def raise_deprecation(cls, values: Dict) -> Dict:
         """Raise deprecation warning if callback_manager is used."""
         if values.get("callback_manager") is not None:
@@ -130,11 +134,6 @@ class BaseChatModel(BaseLanguageModel[BaseMessage], ABC):
             )
             values["callbacks"] = values.pop("callback_manager", None)
         return values
-
-    class Config:
-        """Configuration for this pydantic object."""
-
-        arbitrary_types_allowed = True
 
     # --- Runnable methods ---
 
