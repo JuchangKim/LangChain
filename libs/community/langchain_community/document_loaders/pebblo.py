@@ -400,7 +400,7 @@ class PebbloSafeLoader(BaseLoader):
             runtime=runtime,
             framework=framework,
             plugin_version=PLUGIN_VERSION,
-            langchain_version=langchain_community.__version__,
+            langchain_community_version=langchain_community.__version__,
         )
         return app
 

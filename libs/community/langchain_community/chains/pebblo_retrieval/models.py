@@ -123,7 +123,7 @@ class App(BaseModel):
     framework: Framework
     chains: List[Chains]
     plugin_version: str
-    langchain_version: str
+    langchain_community_version: str
 
 
 class Context(BaseModel):
