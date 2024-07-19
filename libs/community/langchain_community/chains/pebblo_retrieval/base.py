@@ -22,6 +22,7 @@ from langchain_core.language_models import BaseLanguageModel
 from langchain_core.pydantic_v1 import Extra, Field, validator
 from langchain_core.vectorstores import VectorStoreRetriever
 
+import langchain_community
 from langchain_community.chains.pebblo_retrieval.enforcement_filters import (
     SUPPORTED_VECTORSTORES,
     set_enforcement_filters,
@@ -326,6 +327,7 @@ class PebbloRetrievalQA(Chain):
             framework=framework,
             chains=chains,
             plugin_version=PLUGIN_VERSION,
+            langchain_version=langchain_community.__version__,
         )
         return app
 

@@ -121,6 +121,8 @@ class App(BaseModel):
     """Framework details of the app."""
     plugin_version: str
     """Plugin version used for the app."""
+    langchain_version: str
+    """Langchain Community version used for the app."""
 
 
 class Doc(BaseModel):
