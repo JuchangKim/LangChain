@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 import xml.etree.cElementTree  # OK: user-must-opt-in
 from io import BytesIO
 from typing import List, Optional, Sequence
@@ -27,6 +28,7 @@ class QuipLoader(BaseLoader):
         request_timeout: Optional[int] = 60,
         *,
         allow_dangerous_xml_parsing: bool = False,
+        retry_rate_limit: bool = True,
     ):
         """
         Args:
@@ -35,14 +37,17 @@ class QuipLoader(BaseLoader):
                 https://quip.com/dev/automation/documentation/current#section/Authentication/Get-Access-to-Quip's-APIs
             request_timeout: timeout of request, default 60s.
             allow_dangerous_xml_parsing: Allow dangerous XML parsing, defaults to False
+            retry_rate_limit: retry requests when hit rate_limit, default True
         """
         try:
-            from quip_api.quip import QuipClient
+            from quipclient.quip import QuipClient
         except ImportError:
             raise ImportError(
-                "`quip_api` package not found, please run " "`pip install quip_api`"
+                "`quipclient` package not found, please run " "`pip install quipclient`"
             )
 
+        # enable automatically retry when hit overrate limit error
+        self.retry_rate_limit = retry_rate_limit
         self.quip_client = QuipClient(
             access_token=access_token, base_url=api_url, request_timeout=request_timeout
         )
@@ -66,6 +71,7 @@ class QuipLoader(BaseLoader):
         include_all_folders: bool = False,
         include_comments: bool = False,
         include_images: bool = False,
+        keep_html_format: bool = True,
     ) -> List[Document]:
         """
         Args:
@@ -76,6 +82,7 @@ class QuipLoader(BaseLoader):
                    can access, but doesn't include your private folder
             :param include_comments: Include comments, defaults to False
             :param include_images: Include images, defaults to False
+            :param keep_html_format: Whether to keep html format, defaults to True
         """
         if not folder_ids and not thread_ids and not include_all_folders:
             raise ValueError(
@@ -101,31 +108,30 @@ class QuipLoader(BaseLoader):
                 )
 
         thread_ids = list(set(thread_ids[:max_docs]))
-        return self.process_threads(thread_ids, include_images, include_comments)
+        return self.process_threads(
+            thread_ids, include_images, include_comments, keep_html_format
+        )
 
     def get_thread_ids_by_folder_id(
         self, folder_id: str, depth: int, thread_ids: List[str]
     ) -> None:
         """Get thread ids by folder id and update in thread_ids"""
-        from quip_api.quip import HTTPError, QuipError
+        from quipclient.quip import QuipError
 
         try:
             folder = self.quip_client.get_folder(folder_id)
         except QuipError as e:
-            if e.code == 403:
-                logging.warning(
-                    f"depth {depth}, Skipped over restricted folder {folder_id}, {e}"
-                )
+            if self.handle_rate_limit(e):
+                folder = self.quip_client.get_folder(folder_id)
             else:
                 logging.warning(
-                    f"depth {depth}, Skipped over folder {folder_id} "
-                    f"due to unknown error {e.code}"
+                    f"depth {depth}, skipped over folder {folder_id} due to "
+                    f"unknown error {e}"
                 )
-            return
-        except HTTPError as e:
+                return
+        except Exception as e:
             logging.warning(
-                f"depth {depth}, Skipped over folder {folder_id} "
-                f"due to HTTP error {e.code}"
+                f"depth {depth}, skipped over folder {folder_id} due to error {e}"
             )
             return
 
@@ -141,20 +147,45 @@ class QuipLoader(BaseLoader):
                 thread_ids.append(child["thread_id"])
 
     def process_threads(
-        self, thread_ids: Sequence[str], include_images: bool, include_messages: bool
+        self,
+        thread_ids: Sequence[str],
+        include_images: bool,
+        include_messages: bool,
+        keep_html_format: bool,
     ) -> List[Document]:
         """Process a list of thread into a list of documents."""
         docs = []
         for thread_id in thread_ids:
-            doc = self.process_thread(thread_id, include_images, include_messages)
+            doc = self.process_thread(
+                thread_id, include_images, include_messages, keep_html_format
+            )
             if doc is not None:
                 docs.append(doc)
         return docs
 
     def process_thread(
-        self, thread_id: str, include_images: bool, include_messages: bool
+        self,
+        thread_id: str,
+        include_images: bool,
+        include_messages: bool,
+        keep_html_format: bool,
     ) -> Optional[Document]:
-        thread = self.quip_client.get_thread(thread_id)
+        from quipclient.quip import QuipError
+
+        try:
+            thread = self.quip_client.get_thread(thread_id)
+        except QuipError as e:
+            if self.handle_rate_limit(e):
+                thread = self.quip_client.get_thread(thread_id)
+            else:
+                logging.warning(
+                    f"Skipped over thread {thread_id} due to quip error {e}"
+                )
+                return None
+        except Exception as e:
+            logging.warning(f"Skipped over thread {thread_id} due to HTTP error {e}")
+            return None
+
         thread_id = thread["thread"]["id"]
         title = thread["thread"]["title"]
         link = thread["thread"]["link"]
@@ -189,11 +220,58 @@ class QuipLoader(BaseLoader):
             if include_messages:
                 text = text + "/n" + self.process_thread_messages(thread_id)
 
+            if keep_html_format:
+                return Document(
+                    page_content=QuipLoader.remove_unexpected_character(
+                        thread["html"] + text
+                    ),
+                    metadata=metadata,
+                )
+
+            try:
+                from bs4 import BeautifulSoup  # type: ignore
+            except ImportError:
+                raise ImportError(
+                    "`beautifulsoup4` package not found, please run "
+                    "`pip install beautifulsoup4`"
+                )
+
+            thread_text = BeautifulSoup(thread["html"], "lxml").get_text(
+                " ", strip=True
+            )
+
             return Document(
-                page_content=thread["html"] + text,
+                page_content=QuipLoader.remove_unexpected_character(thread_text + text),
                 metadata=metadata,
             )
         return None
+
+    @staticmethod
+    def remove_unexpected_character(text: str) -> str:
+        # In quip, for an empty string
+        return text.replace("\u200b", "")
+
+    def handle_rate_limit(self, e: Exception) -> bool:
+        from quipclient.quip import QuipError
+
+        if (
+            self.retry_rate_limit
+            and isinstance(e, QuipError)
+            and e.code == 503
+            and "Over Rate Limit" in str(e)
+        ):
+            # Retry later.
+            logging.info(f"headers: {e.http_error.headers}")
+            reset_time = (
+                float(e.http_error.headers.get("X-Company-Ratelimit-Reset"))
+                if "X-Company-Ratelimit-Reset" in e.http_error.headers
+                else float(e.http_error.headers.get("X-RateLimit-Reset"))
+            )
+            delay = max(2, int(reset_time - time.time()) + 2)
+            logging.warning(f"Rate Limit {e}, delaying for {delay} seconds")
+            time.sleep(delay)
+            return True
+        return False
 
     def process_thread_images(self, tree: ElementTree) -> str:
         text = ""
