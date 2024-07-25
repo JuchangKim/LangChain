@@ -53,7 +53,7 @@ class FastEmbedEmbeddings(BaseModel, Embeddings):
     class Config:
         """Configuration for this pydantic object."""
 
-        extra = Extra.forbid
+        extra = Extra.allow
 
     @pre_init
     def validate_environment(cls, values: Dict) -> Dict:
@@ -68,10 +68,7 @@ class FastEmbedEmbeddings(BaseModel, Embeddings):
             from fastembed import TextEmbedding
 
             values["_model"] = TextEmbedding(
-                model_name=model_name,
-                max_length=max_length,
-                cache_dir=cache_dir,
-                threads=threads,
+                **values,
             )
         except ImportError as ie:
             try:
