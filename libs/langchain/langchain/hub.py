@@ -13,14 +13,17 @@ if TYPE_CHECKING:
     from langchainhub import Client
 
 
-def _get_client(api_url: Optional[str] = None, api_key: Optional[str] = None) -> Client:
+def _get_client(api_url: Optional[str] = None, api_key: Optional[str] = None) -> Any:
     try:
-        from langchainhub import Client
-    except ImportError as e:
-        raise ImportError(
-            "Could not import langchainhub, please install with `pip install "
-            "langchainhub`."
-        ) from e
+        from langsmith import Client
+    except ImportError:
+        try:
+            from langchainhub import Client
+        except ImportError as e:
+            raise ImportError(
+                "Could not import langsmith or langchainhub (deprecated),"
+                "please install with `pip install langsmith`."
+            ) from e
 
     # Client logic will also attempt to load URL/key from environment variables
     return Client(api_url, api_key=api_key)
@@ -33,7 +36,7 @@ def push(
     api_url: Optional[str] = None,
     api_key: Optional[str] = None,
     parent_commit_hash: Optional[str] = "latest",
-    new_repo_is_public: bool = True,
+    new_repo_is_public: bool = False,
     new_repo_description: str = "",
 ) -> str:
     """
@@ -53,6 +56,18 @@ def push(
         string.
     """
     client = _get_client(api_url=api_url, api_key=api_key)
+
+    # Then it's langsmith
+    if hasattr(client, "push_prompt"):
+        return client.push_prompt(
+            repo_full_name,
+            object,
+            parent_commit_hash,
+            new_repo_is_public,
+            new_repo_description,
+        )
+
+    # Then it's langchainhub
     manifest_json = dumps(object)
     message = client.push(
         repo_full_name,
@@ -81,6 +96,12 @@ def pull(
     """
     client = _get_client(api_url=api_url, api_key=api_key)
 
+    # Then it's langsmith
+    if hasattr(client, "pull_prompt"):
+        response = client.pull_prompt(owner_repo_commit)
+        return response
+
+    # Then it's langchainhub
     if hasattr(client, "pull_repo"):
         # >= 0.1.15
         res_dict = client.pull_repo(owner_repo_commit)
@@ -93,6 +114,6 @@ def pull(
             obj.metadata["lc_hub_commit_hash"] = res_dict["commit_hash"]
         return obj
 
-    # Then it's < 0.1.15
+    # Then it's < 0.1.15 langchainhub
     resp: str = client.pull(owner_repo_commit)
     return loads(resp)
