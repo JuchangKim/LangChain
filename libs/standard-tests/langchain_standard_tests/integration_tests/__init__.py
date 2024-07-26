@@ -8,6 +8,7 @@ modules = [
     "base_store",
     "cache",
     "chat_models",
+    "indexer",
     "vectorstores",
 ]
 
