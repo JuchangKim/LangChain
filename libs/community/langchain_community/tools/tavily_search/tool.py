@@ -1,6 +1,6 @@
 """Tool for the Tavily search API."""
 
-from typing import Dict, List, Optional, Type, Union
+from typing import Dict, List, Literal, Optional, Type, Union
 
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
@@ -63,6 +63,20 @@ class TavilySearchResults(BaseTool):
 
         When converting ``TavilySearchResults`` to a tool, you may want to not return all of the content resulting from ``invoke``. You can select what parts of the response to keep depending on your use case.
 
+    Invoke with tool call:
+
+        .. code-block:: python
+
+            tool = TavilySearchResults(max_results=1)
+            tool_msg = tool.invoke({"args": {'query': 'weather in sfx?'}, "type": "tool_call", "id": "foo", "name": "tavily"})
+            print(tool_msg.content,"\n",tool_msg.artifact)
+
+        .. code-block:: python
+
+            "{'location': {'name': 'San Francisco', 'region': 'California', 'country': 'United States of America', 'lat': 37.78, 'lon': -122.42, 'tz_id': 'America/Los_Angeles', 'localtime_epoch': 1722018708, 'localtime': '2024-07-26 11:31'}, 'current': {'last_updated_epoch': 1722018600, 'last_updated': '2024-07-26 11:30', 'temp_c': 16.5, 'temp_f': 61.8, 'is_day': 1, 'condition': {'text': 'Sunny', 'icon': '//cdn.weatherapi.com/weather/64x64/day/113.png', 'code': 1000}, 'wind_mph': 10.1, 'wind_kph': 16.2, 'wind_degree': 241, 'wind_dir': 'WSW', 'pressure_mb': 1014.0, 'pressure_in': 29.94, 'precip_mm': 0.0, 'precip_in': 0.0, 'humidity': 70, 'cloud': 0, 'feelslike_c': 16.5, 'feelslike_f': 61.7, 'windchill_c': 16.5, 'windchill_f': 61.7, 'heatindex_c': 16.5, 'heatindex_f': 61.8, 'dewpoint_c': 11.2, 'dewpoint_f': 52.1, 'vis_km': 10.0, 'vis_miles': 6.0, 'uv': 5.0, 'gust_mph': 12.1, 'gust_kph': 19.5}}"
+            {'query': 'weather in sf? short articles', 'follow_up_questions': None, 'answer': None, 'images': [], 'results': [{'title': 'Weather in San Francisco', 'url': 'https://www.weatherapi.com/', 'content': "{'location': {'name': 'San Francisco', 'region': 'California', 'country': 'United States of America', 'lat': 37.78, 'lon': -122.42, 'tz_id': 'America/Los_Angeles', 'localtime_epoch': 1722001684, 'localtime': '2024-07-26 6:48'}, 'current': {'last_updated_epoch': 1722001500, 'last_updated': '2024-07-26 06:45', 'temp_c': 13.0, 'temp_f': 55.5, 'is_day': 1, 'condition': {'text': 'Clear', 'icon': '//cdn.weatherapi.com/weather/64x64/day/113.png', 'code': 1000}, 'wind_mph': 6.0, 'wind_kph': 9.7, 'wind_degree': 231, 'wind_dir': 'SW', 'pressure_mb': 1014.0, 'pressure_in': 29.94, 'precip_mm': 0.0, 'precip_in': 0.0, 'humidity': 86, 'cloud': 5, 'feelslike_c': 12.3, 'feelslike_f': 54.2, 'windchill_c': 12.3, 'windchill_f': 54.2, 'heatindex_c': 13.0, 'heatindex_f': 55.5, 'dewpoint_c': 10.6, 'dewpoint_f': 51.0, 'vis_km': 10.0, 'vis_miles': 6.0, 'uv': 1.0, 'gust_mph': 9.6, 'gust_kph': 15.5}}", 'score': 0.9882677, 'raw_content': None}], 'response_time': 2.01}
+
+
     """  # noqa: E501
 
     name: str = "tavily_search_results_json"
@@ -87,6 +101,8 @@ class TavilySearchResults(BaseTool):
     include_images: bool = False
     """Include a list of query related images in the response. Default is False."""
     args_schema: Type[BaseModel] = TavilyInput
+    """The tool response format."""
+    response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
 
     def _run(
         self,
@@ -95,7 +111,7 @@ class TavilySearchResults(BaseTool):
     ) -> Union[List[Dict], str]:
         """Use the tool."""
         try:
-            return self.api_wrapper.results(
+            raw_result = self.api_wrapper.raw_results(
                 query,
                 self.max_results,
                 self.search_depth,
@@ -107,6 +123,8 @@ class TavilySearchResults(BaseTool):
             )
         except Exception as e:
             return repr(e)
+        content = self.api_wrapper.clean_results(raw_result["results"])
+        return content, raw_result  # type: ignore
 
     async def _arun(
         self,
@@ -115,7 +133,7 @@ class TavilySearchResults(BaseTool):
     ) -> Union[List[Dict], str]:
         """Use the tool asynchronously."""
         try:
-            return await self.api_wrapper.results_async(
+            raw_result = await self.api_wrapper.raw_results_async(
                 query,
                 self.max_results,
                 self.search_depth,
@@ -127,6 +145,8 @@ class TavilySearchResults(BaseTool):
             )
         except Exception as e:
             return repr(e)
+        content = self.api_wrapper.clean_results(raw_result["results"])
+        return content, raw_result  # type: ignore
 
 
 class TavilyAnswer(BaseTool):
