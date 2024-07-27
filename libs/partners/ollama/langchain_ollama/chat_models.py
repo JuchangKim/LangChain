@@ -17,7 +17,6 @@ from typing import (
 )
 from uuid import uuid4
 
-import ollama
 from langchain_core.callbacks import (
     CallbackManagerForLLMRun,
 )
@@ -40,7 +39,7 @@ from langchain_core.pydantic_v1 import BaseModel
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
-from ollama import AsyncClient, Message, Options
+from ollama import AsyncClient, Message, Options, Client
 
 
 def _get_usage_metadata_from_generation_info(
@@ -103,6 +102,8 @@ class ChatOllama(BaseChatModel):
     Key init args — completion params:
         model: str
             Name of Ollama model to use.
+        base_url: str
+            Base URL of the Ollama server to use
         temperature: float
             Sampling temperature. Ranges from 0.0 to 1.0.
         num_predict: Optional[int]
@@ -117,6 +118,7 @@ class ChatOllama(BaseChatModel):
 
             llm = ChatOllama(
                 model = "llama3",
+                base_url = "http://some.server.tld:11434"
                 temperature = 0.8,
                 num_predict = 256,
                 # other params ...
@@ -243,6 +245,11 @@ class ChatOllama(BaseChatModel):
             'type': 'tool_call'}]
     """  # noqa: E501
 
+    base_url: Optional[str] = None
+    """Base URL of the Ollama server to use.
+    Default: http://127.0.0.1:11434
+    Note: Ollama must allow your ORIGINS"""
+
     model: str
     """Model name to use."""
 
@@ -310,6 +317,9 @@ class ChatOllama(BaseChatModel):
     to more diverse text, while a lower value (e.g., 0.5) will
     generate more focused and conservative text. (Default: 0.9)"""
 
+    seed: Optional[int] = None
+    """For reproducible outputs, set seed to a number."""
+
     format: Literal["", "json"] = ""
     """Specify the format of the output (options: json)"""
 
@@ -337,6 +347,7 @@ class ChatOllama(BaseChatModel):
                 "tfs_z": self.tfs_z,
                 "top_k": self.top_k,
                 "top_p": self.top_p,
+                "seed": self.seed,
             },
             "keep_alive": self.keep_alive,
         }
@@ -441,8 +452,10 @@ class ChatOllama(BaseChatModel):
                 params[key] = kwargs[key]
 
         params["options"]["stop"] = stop
+
+        ollama_client = AsyncClient(host=self.base_url)
         if "tools" in kwargs:
-            yield await AsyncClient().chat(
+            yield await ollama_client.chat(
                 model=params["model"],
                 messages=ollama_messages,
                 stream=False,
@@ -452,7 +465,7 @@ class ChatOllama(BaseChatModel):
                 tools=kwargs["tools"],
             )  # type:ignore
         else:
-            async for part in await AsyncClient().chat(
+            async for part in await ollama_client.chat(
                 model=params["model"],
                 messages=ollama_messages,
                 stream=True,
@@ -479,8 +492,10 @@ class ChatOllama(BaseChatModel):
                 params[key] = kwargs[key]
 
         params["options"]["stop"] = stop
+
+        ollama_client = Client(host=self.base_url)
         if "tools" in kwargs:
-            yield ollama.chat(
+            yield ollama_client.chat(
                 model=params["model"],
                 messages=ollama_messages,
                 stream=False,
@@ -490,7 +505,7 @@ class ChatOllama(BaseChatModel):
                 tools=kwargs["tools"],
             )
         else:
-            yield from ollama.chat(
+            yield from ollama_client.chat(
                 model=params["model"],
                 messages=ollama_messages,
                 stream=True,
