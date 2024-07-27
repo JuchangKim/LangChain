@@ -106,7 +106,7 @@ class UnstructuredLoader(BaseLoader):
                     f"params: {', '.join(bad_params)}."
                 )
 
-        unstructured_api_key = api_key or os.getenv("UNSTRUCTURED_API_KEY")
+        unstructured_api_key = api_key or os.getenv("UNSTRUCTURED_API_KEY") or ""
         unstructured_url = server_url or os.getenv("UNSTRUCTURED_URL") or _DEFAULT_URL
 
         self.client = client or UnstructuredClient(
@@ -165,7 +165,6 @@ class _SingleDocumentLoader(BaseLoader):
         file: Optional[IO[bytes]] = None,
         partition_via_api: bool = False,
         post_processors: Optional[list[Callable[[str], str]]] = None,
-        # SDK parameters
         **kwargs: Any,
     ):
         """Initialize loader."""
